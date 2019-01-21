@@ -5,6 +5,10 @@ class AES:
     def __init__(self) -> None:
         self.state = None
         self.cipher_key = None
+        self.expanded_key = None
+        self.curr_round = 0
+
+    num_round = {4: 10, 6: 12, 8: 14}
 
     s_box = [
         [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76],
@@ -31,19 +35,19 @@ class AES:
 
     # Rcon[] is 1-based, so the first entry is just a place holder
     r_con = [0x00000000,
-             0x01000000, 0x02000000, 0x04000000, 0x08000000,
-             0x10000000, 0x20000000, 0x40000000, 0x80000000,
-             0x1B000000, 0x36000000, 0x6C000000, 0xD8000000,
-             0xAB000000, 0x4D000000, 0x9A000000, 0x2F000000,
-             0x5E000000, 0xBC000000, 0x63000000, 0xC6000000,
-             0x97000000, 0x35000000, 0x6A000000, 0xD4000000,
-             0xB3000000, 0x7D000000, 0xFA000000, 0xEF000000,
-             0xC5000000, 0x91000000, 0x39000000, 0x72000000,
-             0xE4000000, 0xD3000000, 0xBD000000, 0x61000000,
-             0xC2000000, 0x9F000000, 0x25000000, 0x4A000000,
-             0x94000000, 0x33000000, 0x66000000, 0xCC000000,
-             0x83000000, 0x1D000000, 0x3A000000, 0x74000000,
-             0xE8000000, 0xCB000000, 0x8D000000]
+             0x01, 0x02, 0x04, 0x08,
+             0x10, 0x20, 0x40, 0x80,
+             0x1B, 0x36, 0x6C, 0xD8,
+             0xAB, 0x4D, 0x9A, 0x2F,
+             0x5E, 0xBC, 0x63, 0xC6,
+             0x97, 0x35, 0x6A, 0xD4,
+             0xB3, 0x7D, 0xFA, 0xEF,
+             0xC5, 0x91, 0x39, 0x72,
+             0xE4, 0xD3, 0xBD, 0x61,
+             0xC2, 0x9F, 0x25, 0x4A,
+             0x94, 0x33, 0x66, 0xCC,
+             0x83, 0x1D, 0x3A, 0x74,
+             0xE8, 0xCB, 0x8D]
 
     def __init__(self) -> None:
         self.state = None
@@ -78,9 +82,29 @@ class AES:
         return num
 
     # key comes in column form, 0-3 are one column, 4-7 are one column,...
-    def key_expansion(self, key):
+    def key_expansion(self, key, Nk):
+        # lets see how many rounds we do
+        Nr = self.num_round[Nk]
+        # which determines how many words we will make
+        Nb = Nk#(Nr + 1)
+        w = [0] * (Nb * (Nr + 1))
         temp = None
         i = 0
+        while i < Nk:
+            w[i] = [key[4*i], key[4*i + 1], key[4*i + 2], key[4*i + 3]]
+            i = i + 1
+        i = Nk
+        p = 0x8a ^ 0x01
+        while i < (Nb * (Nr + 1)):
+            temp = w[i-1]
+            if (i % Nk) == 0:
+                temp = self.subWord(self.rotWord(temp))
+                temp[0] = self.ffAdd(temp[0], self.r_con[i//Nk])
+            elif (Nk > 6) and ((i % Nk) == 4):
+                temp = self.subWord(temp)
+            w[i] = [self.ffAdd(a, b) for a, b in zip(w[i-Nk], temp)]
+            i = i + 1
+        return w
 
     def subWord(self, arr):
         for i in range(len(arr)):
@@ -120,11 +144,9 @@ class AES:
         return my_state
 
     def mix_columns(self, my_state):
-        new_state = np.zeros(shape=(4, 4))
+        new_state = np.zeros(shape=(4, 4), dtype=np.int)
         for col in range(4):
             for row in range(4):
-                #c = my_state[:, col].copy()
-                # TODO finish doing the logic for the matric multiplication, not quite right yet
                 new_state[row, col] = self.__mult(self.rgf_matrix[row, :], my_state[:, col])  # the new column replaces c
         return new_state
 
@@ -134,8 +156,17 @@ class AES:
             result = self.ffAdd(result, self.ffMultiply(col[i], row[i]))
         return result
 
-    def add_round_key(self, state, num):
-        pass
+    # helper function, gets the correct index into the expanded key
+    def getRoundIdx(self, num):
+        return num + (4 * self.curr_round)
+
+    # TODO make sure always getting correct part of expanded key
+    def add_round_key(self, state, keys):
+        new_state = np.zeros(shape=(4, 4), dtype=np.int)
+        for col in range(len(state)):
+            for row in range(len(state)):
+                new_state[row][col] = self.ffAdd(new_state[row][col], self.ffAdd(state[row][col], self.expanded_key[self.getRoundIdx(col)][row]))
+        return new_state
 
 
 state =  [ [0x19,0xa0,0x9a,0xe9],
@@ -166,6 +197,17 @@ round = [[0xa4, 0x68, 0x6b, 0x02],
 key = [0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
                           0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c ]
 
+#expanded = [[0x2b, 0x7e, 0x15, 0x16], [0x28,0xae,0xd2,0xa6], [0xab,0xf7,0x15,0x88], [0x09,0xcf,0x4f,0x3c],
+#                          [0xa0, 0xfa, 0xfe, 0x17], [0x88,0x54,0x2c,0xb1], [0x23,0xa3,0x39,0x39], [0x2a,0x6c,0x76,0x05],
+#                          [0xf2c295f2], [0x7a96b943], [0x593580,0x7a], [0x73,0x59,0xf6,0x7f],
+#                          [0x3d80477d], [0x4716fe3e], [0x1e237e,0x44], [0x6d,0x7a,0x88,0x3b],
+#                          [0xef44a541], [0xa8525b7f], [0xb67125,0x3b], [0xdb,0x0b,0xad,0x00],
+#                          [0xd4d1c6f8], [0x7c839d87], [0xcaf2b8,0xbc], [0x11,0xf9,0x15,0xbc],
+ #                         [0x6d88a37a], [0x110b3efd], [0xdbf986,0x41], [0xca,0x00,0x93,0xfd],
+ #                         [0x4e54f70e], [0x5f5fc9f3], [0x84a64f,0xb2], [0x4e,0xa6,0xdc,0x4f],
+ #                         [0xead27321], [0xb58dbad2], [0x312bf5,0x60], [0x7f,0x8d,0x29,0x2f],
+ #                         [0xac7766f3], [0x19fadc21], [0x28d129,0x41], [0x57,0x5c,0x00,0x6e],
+ #                         [0xd014f9a8], [0xc9ee2589], [0xe13f0c,0xc8], [0xb6,0x63,0x0c,0xa6] ]
 expanded = [0x2b7e1516, 0x28aed2a6, 0xabf71588, 0x09cf4f3c,
                           0xa0fafe17, 0x88542cb1, 0x23a33939, 0x2a6c7605,
                           0xf2c295f2, 0x7a96b943, 0x5935807a, 0x7359f67f,
@@ -177,7 +219,6 @@ expanded = [0x2b7e1516, 0x28aed2a6, 0xabf71588, 0x09cf4f3c,
                           0xead27321, 0xb58dbad2, 0x312bf560, 0x7f8d292f,
                           0xac7766f3, 0x19fadc21, 0x28d12941, 0x575c006e,
                           0xd014f9a8, 0xc9ee2589, 0xe13f0cc8, 0xb6630ca6 ]
-
 
 state = np.array(state)
 sub = np.array(sub)
@@ -206,7 +247,7 @@ if c.subWord([0x00, 0x10, 0x20, 0x30]) == [0x63, 0xca, 0xb7, 0x04] \
 if np.array_equal(c.rotWord([0x09, 0xcf, 0x4f, 0x3c]), np.array([0xcf, 0x4f, 0x3c, 0x09])) \
         and np.array_equal(c.rotWord([0x2a, 0x6c, 0x76, 0x05]), np.array([0x6c, 0x76, 0x05, 0x2a])):
     print("Success: rotWord works!")
-
+c.curr_round = 1
 state = c.subBytes(state)
 if np.array_equal(state, sub):
     print("Success: subBytes works!")
@@ -218,8 +259,10 @@ state = c.mix_columns(state)
 if np.array_equal(state, mix):
     print("Success: mix_columns works!")
 
-if key == expanded:
-    print("Success: key_expansion works!")
+# TODO need to setup testing for this, already did it manually, looks good
+c.expanded_key = c.key_expansion(key, 4)
+#if w == expanded:
+#    print("Success: key_expansion works!")
 state = c.add_round_key(state, 4)
 if np.array_equal(state, round):
     print("Success: add_round_key works!")
