@@ -1,5 +1,5 @@
 from functools import reduce
-
+import numpy as np
 
 class AES:
     def __init__(self) -> None:
@@ -24,6 +24,32 @@ class AES:
         [0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf],
         [0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16]]
 
+    rgf_matrix = [[0x02, 0x03, 0x01, 0x01],
+                 [0x01, 0x02, 0x03, 0x01],
+                 [0x01, 0x01, 0x02, 0x03],
+                 [0x03, 0x01, 0x01, 0x02]]
+
+    # Rcon[] is 1-based, so the first entry is just a place holder
+    r_con = [0x00000000,
+             0x01000000, 0x02000000, 0x04000000, 0x08000000,
+             0x10000000, 0x20000000, 0x40000000, 0x80000000,
+             0x1B000000, 0x36000000, 0x6C000000, 0xD8000000,
+             0xAB000000, 0x4D000000, 0x9A000000, 0x2F000000,
+             0x5E000000, 0xBC000000, 0x63000000, 0xC6000000,
+             0x97000000, 0x35000000, 0x6A000000, 0xD4000000,
+             0xB3000000, 0x7D000000, 0xFA000000, 0xEF000000,
+             0xC5000000, 0x91000000, 0x39000000, 0x72000000,
+             0xE4000000, 0xD3000000, 0xBD000000, 0x61000000,
+             0xC2000000, 0x9F000000, 0x25000000, 0x4A000000,
+             0x94000000, 0x33000000, 0x66000000, 0xCC000000,
+             0x83000000, 0x1D000000, 0x3A000000, 0x74000000,
+             0xE8000000, 0xCB000000, 0x8D000000]
+
+    def __init__(self) -> None:
+        self.state = None
+        self.cipher_key = None
+        self.rgf_matrix = np.array(self.rgf_matrix)
+
     def bin_number(self, num):
         # turn the number into a bit string and take of the '0b' at the beginning
         return ((bin(num))[2:])
@@ -32,21 +58,15 @@ class AES:
         return a ^ b
 
     def ffMultiply(self, a, b):
-        # get just the bits and then reverse the string
-        bits = (self.bin_number(b))[::-1]
-        result = 0
-        c = [a]
-        for i in range(len(bits)):
-            x = int(bits[i])
-            if i == 0 and x & 1:  # and first bit is one
-                result = self.ffAdd(result, a)
-            else:
-                result = self.xtime(result)
-                # if the bit is set then XOR result together
-                if x & 1:
-                    c.append(result)
-
-        return reduce((lambda num, num2: self.ffAdd(num, num2)), c)
+        p = 0
+        for i in range(8):
+            if a == 0 or b == 0:
+                return p
+            if b & 1:
+                p = self.ffAdd(p, a)
+            a = self.xtime(a)
+            b >>= 1
+        return p
 
     def xtime(self, num):
         if num & 0x80:
@@ -57,13 +77,26 @@ class AES:
         num = num & 0xFF
         return num
 
+    # key comes in column form, 0-3 are one column, 4-7 are one column,...
+    def key_expansion(self, key):
+        temp = None
+        i = 0
 
-    def subWord(self, num):
-       pass
+    def subWord(self, arr):
+        for i in range(len(arr)):
+            r = 0
+            c = self.bin_number(arr[i])
+            if len(c) > 4:
+                r = int(c[:len(c) - 4], 2)
+                c = int(c[len(c) - 4:], 2)
+            else:
+                c = int(c, 2)
+            arr[i] = self.s_box[r][c]
+        return arr
 
-
-    def rotWord(self, num):
-        pass
+    def rotWord(self, arr):
+        arr = np.array(arr)
+        return np.roll(arr, -1)
 
 
     def subBytes(self, my_state):
@@ -82,22 +115,27 @@ class AES:
     def shift_rows(self, my_state):
         for rowIdx in range(1, 4):
             # simply rotate the list around
-            my_state[rowIdx] = (my_state[rowIdx])[rowIdx:] + (my_state[rowIdx])[:rowIdx]
+            my_state[rowIdx] = np.roll(my_state[rowIdx], -rowIdx)
+            #my_state[rowIdx] = (my_state[rowIdx])[rowIdx:] + (my_state[rowIdx])[:rowIdx]
         return my_state
 
-    def mix_columns(self, state):
-        for  col in state[0]
-            for every row, r, in given_matrix
-        c = mult(r, c)  # the new column replaces c
-    
+    def mix_columns(self, my_state):
+        new_state = np.zeros(shape=(4, 4))
+        for col in range(4):
+            for row in range(4):
+                #c = my_state[:, col].copy()
+                # TODO finish doing the logic for the matric multiplication, not quite right yet
+                new_state[row, col] = self.__mult(self.rgf_matrix[row, :], my_state[:, col])  # the new column replaces c
+        return new_state
 
-mult(row, col):
-result = [0, 0, 0, 0]  # a 1D array of zeroes to start
-for i where i < len(row), i++:
-    # since the length of col and row are the same we can just use this for both
-    idx = (i + 1) % len(row)
-    ffadd(result(i), ffadd(ffmult(row(i), col(i))), ffmult(row(idx), col(idx)))
-return result
+    def __mult(self, row, col):
+        result = 0
+        for i in range(4):
+            result = self.ffAdd(result, self.ffMultiply(col[i], row[i]))
+        return result
+
+    def add_round_key(self, state, num):
+        pass
 
 
 state =  [ [0x19,0xa0,0x9a,0xe9],
@@ -105,45 +143,83 @@ state =  [ [0x19,0xa0,0x9a,0xe9],
                  [0xe3,0xe2,0x8d,0x48],
                  [0xbe,0x2b,0x2a,0x08]]
 
-sub =    [[0xd4,0xe0,0xb8,0x1e],
+sub = [[0xd4,0xe0,0xb8,0x1e],
                          [0x27,0xbf,0xb4,0x41],
                          [0x11,0x98,0x5d,0x52],
                          [0xae,0xf1,0xe5,0x30]]
 
-shift =  [[0xd4, 0xe0, 0xb8, 0x1e],
+shift = [[0xd4, 0xe0, 0xb8, 0x1e],
                          [0xbf, 0xb4, 0x41, 0x27],
                          [0x5d, 0x52, 0x11, 0x98],
                          [0x30, 0xae, 0xf1, 0xe5]]
 
-mix =    [[0x04, 0xe0, 0x48, 0x28],
+mix = [[0x04, 0xe0, 0x48, 0x28],
                          [0x66, 0xcb, 0xf8, 0x06],
                          [0x81, 0x19, 0xd3, 0x26],
                          [0xe5, 0x9a, 0x7a, 0x4c]]
 
+round = [[0xa4, 0x68, 0x6b, 0x02],
+                          [0x9c, 0x9f, 0x5b, 0x6a],
+                          [0x7f, 0x35, 0xea, 0x50],
+                          [0xf2, 0x2b, 0x43, 0x49]]
+
+key = [0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
+                          0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c ]
+
+expanded = [0x2b7e1516, 0x28aed2a6, 0xabf71588, 0x09cf4f3c,
+                          0xa0fafe17, 0x88542cb1, 0x23a33939, 0x2a6c7605,
+                          0xf2c295f2, 0x7a96b943, 0x5935807a, 0x7359f67f,
+                          0x3d80477d, 0x4716fe3e, 0x1e237e44, 0x6d7a883b,
+                          0xef44a541, 0xa8525b7f, 0xb671253b, 0xdb0bad00,
+                          0xd4d1c6f8, 0x7c839d87, 0xcaf2b8bc, 0x11f915bc,
+                          0x6d88a37a, 0x110b3efd, 0xdbf98641, 0xca0093fd,
+                          0x4e54f70e, 0x5f5fc9f3, 0x84a64fb2, 0x4ea6dc4f,
+                          0xead27321, 0xb58dbad2, 0x312bf560, 0x7f8d292f,
+                          0xac7766f3, 0x19fadc21, 0x28d12941, 0x575c006e,
+                          0xd014f9a8, 0xc9ee2589, 0xe13f0cc8, 0xb6630ca6 ]
+
+
+state = np.array(state)
+sub = np.array(sub)
+shift = np.array(shift)
+mix = np.array(mix)
+key = np.array(key)
+expanded = np.array(expanded)
 # xtime(57) = ae
 # xtime(ae) =
 # ae = 1010 1110 bit shifted becomes 1 0101 1100
 c = AES()
 #c.state = state
-b = c.s_box[0][0]
 if c.ffAdd(0x57, 0x83) == 0xd4 and c.xtime(0x57) == 0xae and c.xtime(0xae) == 0x47 and c.xtime(
         0x47) == 0x8e and c.xtime(0x8e) == 0x07:
-    print("Success: ffAdd works!")
+    print("Success: ffAdd and xtime works!")
 
 if c.ffMultiply(0x57, 0x13) == 0xfe:
     print("Success: ffMult works!")
 
+if c.subWord([0x00, 0x10, 0x20, 0x30]) == [0x63, 0xca, 0xb7, 0x04] \
+        and c.subWord([0x40, 0x50, 0x60, 0x70]) == [0x09, 0x53, 0xd0, 0x51] \
+        and c.subWord([0x80, 0x90, 0xa0, 0xb0]) == [0xcd, 0x60, 0xe0, 0xe7] \
+        and c.subWord([0xc0, 0xd0, 0xe0, 0xf0]) == [0xba, 0x70, 0xe1, 0x8c]:
+    print("Success: subWord works!")
+
+if np.array_equal(c.rotWord([0x09, 0xcf, 0x4f, 0x3c]), np.array([0xcf, 0x4f, 0x3c, 0x09])) \
+        and np.array_equal(c.rotWord([0x2a, 0x6c, 0x76, 0x05]), np.array([0x6c, 0x76, 0x05, 0x2a])):
+    print("Success: rotWord works!")
+
 state = c.subBytes(state)
-if  state == sub:
+if np.array_equal(state, sub):
     print("Success: subBytes works!")
 state = c.shift_rows(state)
-if state == shift:
+if np.array_equal(state, shift):
     print("Success: shiftRows works!")
-state = c.mix_columns(state)
-if state == mix:
-    print("Success: mix_columns works!")
-#if c.subWord(0x00102030) == 0x63cab704 and c.subWord(0x40506070) == 0x0953d051 and c.subWord(0x8090a0b0) == 0xcd60e0e7 and c.subWord(0xc0d0e0f0) == 0xba70e18c:
- #   print("Success: subWord works!")
 
-#if c.rotWord(0x09cf4f3c) == 0xcf4f3c09 and c.rotWord(0x2a6c7605) == 0x6c76052a:
- #   print("Success: rotWord works!")
+state = c.mix_columns(state)
+if np.array_equal(state, mix):
+    print("Success: mix_columns works!")
+
+if key == expanded:
+    print("Success: key_expansion works!")
+state = c.add_round_key(state, 4)
+if np.array_equal(state, round):
+    print("Success: add_round_key works!")
