@@ -208,23 +208,20 @@ class AES:
                 new_state[row][col] = self.ffAdd(new_state[row][col], self.ffAdd(state[row][col], self.expanded_key[key_idx][row]))
         return new_state
 
+    # Simply puts a string of text into the correct format
     def __setup_state(self, inpt):
         self.state = [0] * 4
         # 8 is the length of a byte
         inpt = [inpt[i:i + 8] for i in range(0, len(inpt), 8)]
         for i in range(len(self.state)):
-            self.state[i] = self.text_to_arr(inpt[i])  # TODO parse input here
+            self.state[i] = self.text_to_arr(inpt[i])
         # make state an np matrix
         self.state = np.array(self.state)
 
-    # TODO add inverse cipher function
-
-    # TODO add cipher function and the various rounds
     def cipher(self, input):
         self.__setup_state(input)
         self.initial_state = self.state.copy()
         Nr = self.num_round[self.Nk]
-        # TODO BUG HERE! Not giving correct output
         self.state = self.add_round_key(self.state)
 
         for rounds in range(1, Nr):
@@ -251,10 +248,10 @@ class AES:
             self.state = self.add_round_key(self.state)
             self.state = self.mix_columns(self.state, self.inv_rgf_matrix)
 
-
         self.state = self.shift_rows(self.state, 1)
         self.state = self.subBytes(self.state, self.InvSbox)
         self.curr_round -= 1
         self.state = self.add_round_key(self.state)
 
         return self.state
+

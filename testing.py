@@ -117,24 +117,31 @@ state = c.add_round_key(state)
 if np.array_equal(state, mix):
     print("Success: inv_add_round_key works!")
 
+def compareDe_En(text, cipher_key, name_of_test):
+    d = aes.AES()
+    d.expanded_key = d.key_expansion(cipher_key)
+    test_encrypted = d.cipher(text)
+    test1_decrypted = d.inv_cipher(test_encrypted.copy())
+    if np.array_equal(d.initial_state, test1_decrypted):
+        print("Success: " + name_of_test + " passed")
+    else:
+        print("Failure!" + name_of_test)
 ###
 # cipher test from video
-d = aes.AES()
+
 vid_input = "328831e0435a3137f6309807a88da234"
-#cipher = d.text_to_arr("2b28ab097eaef7cf15d2154f16a6883c")
-d.expanded_key = d.key_expansion(key)  # TODO Bug with how we are getting cipher?
-test_encrypted = d.cipher(vid_input)
-test1_decrypted = d.inv_cipher(test_encrypted.copy())
-if np.array_equal(d.initial_state, test1_decrypted):
-    print("Success: D/E worked")
+compareDe_En(vid_input, key, "Animation Video test")
 ################################
 
 my_input = "00112233445566778899aabbccddeeff"
-cipher_key = d.text_to_arr("000102030405060708090a0b0c0d0e0f") # length of 32
-#cipher_key2 = d.text_to_arr("000102030405060708090a0b0c0d0e0f1011121314151617") #len of 48
-#cipher_key3 = d.text_to_arr("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") #len of 64
-#d.expanded_key = d.key_expansion(cipher_key)
-#test1_encrypted = d.cipher(my_input)
-#test1_decrypted = d.inv_cipher(test1_encrypted.copy())
-#if np.array_equal(test1_encrypted, test1_decrypted):
-#    print("Success: Encryption and decryption works!")
+cipher_key = [0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f] # length of 32
+
+cipher_key2 = [0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,
+                0x0b,0x0c,0x0d,0x0e,0x0f,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17]
+
+cipher_key3 = [0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,
+                0x0f,0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f]
+compareDe_En(my_input, cipher_key, "128 bit key test")
+compareDe_En(my_input, cipher_key2, "196 bit key test")
+compareDe_En(my_input, cipher_key3, "256 bit key test")
+
