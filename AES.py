@@ -1,13 +1,17 @@
 import numpy as np
-# Python implementation of AES
 
+
+# Python implementation of AES
 class AES:
+
     def __init__(self) -> None:
         self.state = None
         self.cipher_key = None
         self.expanded_key = None
         self.curr_round = 0
-
+        self.Nk = 0
+        self.initial_state = None
+    curr_round = 0
     num_round = {4: 10, 6: 12, 8: 14}
 
     s_box = [
@@ -74,11 +78,18 @@ class AES:
         [0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61],
         [0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d]]
 
+    def text_to_arr(self, text):
+        arr = [0] * (len(text)//2)
+        i = 0
+        while i < len(text) - 1:
+            hex = "0x" + text[i] + text[i+1]
+            arr[i//2] = int(hex, 16)
+            i += 2
+        return arr
+
     def __init__(self) -> None:
         self.state = None
         self.cipher_key = None
-        #self.rgf_matrix = np.array(self.rgf_matrix)
-        #self.inv_rgf_matrix = np.array(self.inv_rgf_matrix)
 
     def bin_number(self, num):
         # turn the number into a bit string and take of the '0b' at the beginning
@@ -108,26 +119,28 @@ class AES:
         return num
 
     # key comes in column form, 0-3 are one column, 4-7 are one column,...
-    def key_expansion(self, key, Nk):
+    def key_expansion(self, key):
+
+        self.Nk = len(key)//4
         # lets see how many rounds we do
-        Nr = self.num_round[Nk]
+        Nr = self.num_round[self.Nk]
         # which determines how many words we will make
-        Nb = Nk#(Nr + 1)
+        Nb = 4
         w = [0] * (Nb * (Nr + 1))
         temp = None
         i = 0
-        while i < Nk:
+        while i < self.Nk:
             w[i] = [key[4*i], key[4*i + 1], key[4*i + 2], key[4*i + 3]]
             i = i + 1
-        i = Nk
+        i = self.Nk
         while i < (Nb * (Nr + 1)):
             temp = w[i-1]
-            if (i % Nk) == 0:
+            if (i % self.Nk) == 0:
                 temp = self.subWord(self.rotWord(temp))
-                temp[0] = self.ffAdd(temp[0], self.r_con[i//Nk])
-            elif (Nk > 6) and ((i % Nk) == 4):
+                temp[0] = self.ffAdd(temp[0], self.r_con[i//self.Nk])
+            elif (self.Nk > 6) and ((i % self.Nk) == 4):
                 temp = self.subWord(temp)
-            w[i] = [self.ffAdd(a, b) for a, b in zip(w[i-Nk], temp)]
+            w[i] = [self.ffAdd(a, b) for a, b in zip(w[i-self.Nk], temp)]
             i = i + 1
         return w
 
@@ -159,14 +172,13 @@ class AES:
                     c = int(c[len(c) - 4:], 2)
                 else:
                     c = int(c, 2)
-                my_state[i][j] = self.s_box[r][c]
+                my_state[i][j] = s_box[r][c]
         return my_state
 
     def shift_rows(self, my_state, shift_direction=-1):
         for rowIdx in range(1, 4):
             # simply rotate the list around
             my_state[rowIdx] = np.roll(my_state[rowIdx], shift_direction * rowIdx)
-            #my_state[rowIdx] = (my_state[rowIdx])[rowIdx:] + (my_state[rowIdx])[:rowIdx]
         return my_state
 
     def mix_columns(self, my_state, matrix=rgf_matrix):
@@ -188,15 +200,61 @@ class AES:
         return num + (4 * self.curr_round)
 
     # TODO make sure always getting correct part of expanded key
-    def add_round_key(self, state, keys):
+    def add_round_key(self, state):
         new_state = np.zeros(shape=(4, 4), dtype=np.int)
         for col in range(len(state)):
             for row in range(len(state)):
-                new_state[row][col] = self.ffAdd(new_state[row][col], self.ffAdd(state[row][col], self.expanded_key[self.getRoundIdx(col)][row]))
+                key_idx = self.getRoundIdx(col)
+                new_state[row][col] = self.ffAdd(new_state[row][col], self.ffAdd(state[row][col], self.expanded_key[key_idx][row]))
         return new_state
+
+    def __setup_state(self, inpt):
+        self.state = [0] * 4
+        # 8 is the length of a byte
+        inpt = [inpt[i:i + 8] for i in range(0, len(inpt), 8)]
+        for i in range(len(self.state)):
+            self.state[i] = self.text_to_arr(inpt[i])  # TODO parse input here
+        # make state an np matrix
+        self.state = np.array(self.state)
 
     # TODO add inverse cipher function
 
     # TODO add cipher function and the various rounds
+    def cipher(self, input):
+        self.__setup_state(input)
+        self.initial_state = self.state.copy()
+        Nr = self.num_round[self.Nk]
+        # TODO BUG HERE! Not giving correct output
+        self.state = self.add_round_key(self.state)
+
+        for rounds in range(1, Nr):
+            self.curr_round = rounds
+            self.state = self.subBytes(self.state)
+            self.state = self.shift_rows(self.state)
+            self.state = self.mix_columns(self.state)
+            self.state = self.add_round_key(self.state)
+
+        self.curr_round += 1
+        self.state = self.subBytes(self.state)
+        self.state = self.shift_rows(self.state)
+        self.state = self.add_round_key(self.state)
+
+        return self.state
+
+    def inv_cipher(self, my_state):
+        self.state = self.add_round_key(my_state)
+
+        while self.curr_round != 1:
+            self.state = self.shift_rows(self.state, 1)
+            self.state = self.subBytes(self.state, self.InvSbox)
+            self.curr_round -= 1
+            self.state = self.add_round_key(self.state)
+            self.state = self.mix_columns(self.state, self.inv_rgf_matrix)
 
 
+        self.state = self.shift_rows(self.state, 1)
+        self.state = self.subBytes(self.state, self.InvSbox)
+        self.curr_round -= 1
+        self.state = self.add_round_key(self.state)
+
+        return self.state

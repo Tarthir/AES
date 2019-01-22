@@ -106,9 +106,35 @@ if np.array_equal(invState, shift):
 state = mix
 
 # TODO need to setup testing for this, already did it manually, looks good
-c.expanded_key = c.key_expansion(key, 4)
+c.expanded_key = c.key_expansion(key)
 #if w == expanded:
 #    print("Success: key_expansion works!")
-state = c.add_round_key(state, 4)
+state = c.add_round_key(state)
 if np.array_equal(state, round):
     print("Success: add_round_key works!")
+
+state = c.add_round_key(state)
+if np.array_equal(state, mix):
+    print("Success: inv_add_round_key works!")
+
+###
+# cipher test from video
+d = aes.AES()
+vid_input = "328831e0435a3137f6309807a88da234"
+#cipher = d.text_to_arr("2b28ab097eaef7cf15d2154f16a6883c")
+d.expanded_key = d.key_expansion(key)  # TODO Bug with how we are getting cipher?
+test_encrypted = d.cipher(vid_input)
+test1_decrypted = d.inv_cipher(test_encrypted.copy())
+if np.array_equal(d.initial_state, test1_decrypted):
+    print("Success: D/E worked")
+################################
+
+my_input = "00112233445566778899aabbccddeeff"
+cipher_key = d.text_to_arr("000102030405060708090a0b0c0d0e0f") # length of 32
+#cipher_key2 = d.text_to_arr("000102030405060708090a0b0c0d0e0f1011121314151617") #len of 48
+#cipher_key3 = d.text_to_arr("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f") #len of 64
+#d.expanded_key = d.key_expansion(cipher_key)
+#test1_encrypted = d.cipher(my_input)
+#test1_decrypted = d.inv_cipher(test1_encrypted.copy())
+#if np.array_equal(test1_encrypted, test1_decrypted):
+#    print("Success: Encryption and decryption works!")
