@@ -1,5 +1,5 @@
 import numpy as np
-
+import os
 
 # Python implementation of AES
 class AES:
@@ -11,6 +11,7 @@ class AES:
         self.curr_round = 0
         self.Nk = 0
         self.initial_state = None
+        self.file = None
     curr_round = 0
     num_round = {4: 10, 6: 12, 8: 14}
 
@@ -134,7 +135,7 @@ class AES:
             i = i + 1
         i = self.Nk
         while i < (Nb * (Nr + 1)):
-            temp = w[i-1]
+            temp = w[i-1].copy()
             if (i % self.Nk) == 0:
                 temp = self.subWord(self.rotWord(temp))
                 temp[0] = self.ffAdd(temp[0], self.r_con[i//self.Nk])
@@ -199,7 +200,6 @@ class AES:
     def getRoundIdx(self, num):
         return num + (4 * self.curr_round)
 
-    # TODO make sure always getting correct part of expanded key
     def add_round_key(self, state):
         new_state = np.zeros(shape=(4, 4), dtype=np.int)
         for col in range(len(state)):
@@ -217,24 +217,42 @@ class AES:
             self.state[i] = self.text_to_arr(inpt[i])
         # make state an np matrix
         self.state = np.array(self.state)
+        self.state = np.transpose(self.state)
 
     def cipher(self, input):
+        try:
+            os.remove(self.file)
+        except IOError:
+            print("IOERROR: "+self.file+" does not exist")
         self.__setup_state(input)
         self.initial_state = self.state.copy()
+        self.state_print("input", self.state)
         Nr = self.num_round[self.Nk]
+        self.key_print("k_sch", self.expanded_key)
         self.state = self.add_round_key(self.state)
 
         for rounds in range(1, Nr):
             self.curr_round = rounds
+            self.state_print("start", self.state)
             self.state = self.subBytes(self.state)
+            self.state_print("s_box", self.state)
             self.state = self.shift_rows(self.state)
+            self.state_print("s_row", self.state)
             self.state = self.mix_columns(self.state)
+            self.state_print("m_col", self.state)
             self.state = self.add_round_key(self.state)
+            self.key_print("k_sch", self.expanded_key)
+
+
 
         self.curr_round += 1
         self.state = self.subBytes(self.state)
+        self.state_print("s_bytes", self.state)
         self.state = self.shift_rows(self.state)
+        self.state_print("s_row", self.state)
         self.state = self.add_round_key(self.state)
+        self.key_print("k_sch", self.expanded_key)
+        self.state_print("output", self.state)
 
         return self.state
 
@@ -255,3 +273,23 @@ class AES:
 
         return self.state
 
+    def state_print(self, inpt, matrix):
+        to_print = np.transpose(matrix)
+        string = ""
+        for i in range(len(matrix)):
+            for j in range(len(matrix[0])):
+                string += hex(to_print[i, j]) + " "
+        with open(self.file, "a") as f:
+            string = "Round " + str(self.curr_round) + " " + inpt + " : " + string
+            f.write(string + "\n")
+
+    def key_print(self, inpt, expanded_key):
+        #to_print = np.transpose(expanded_key)
+        string = ""
+        for col in range(len(self.state)):
+            for row in range(len(self.state)):
+                key_idx = self.getRoundIdx(col)
+                string += hex(expanded_key[key_idx][row]) + " "
+        with open(self.file, "a") as f:
+            string = "Round " + str(self.curr_round) + " " + inpt + " : " + string
+            f.write(string + "\n")
