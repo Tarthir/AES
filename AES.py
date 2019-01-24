@@ -257,20 +257,33 @@ class AES:
         return self.state
 
     def inv_cipher(self, my_state):
+        with open(self.file, "a") as f:
+            f.write("\n\n#######INVERSE CIPHER#######\n\n")
+        self.state_print("input", self.state)
+        self.key_print("k_sch", self.expanded_key)
         self.state = self.add_round_key(my_state)
-
+        self.state_print("start", self.state)
         while self.curr_round != 1:
             self.state = self.shift_rows(self.state, 1)
+            self.state_print("s_row", self.state)
             self.state = self.subBytes(self.state, self.InvSbox)
+            self.state_print("s_box", self.state)
             self.curr_round -= 1
+            self.key_print("k_sch", self.expanded_key)
             self.state = self.add_round_key(self.state)
+            self.state_print("ik_add", self.state)
             self.state = self.mix_columns(self.state, self.inv_rgf_matrix)
+            self.state_print("start", self.state)
+
 
         self.state = self.shift_rows(self.state, 1)
+        self.state_print("s_row", self.state)
         self.state = self.subBytes(self.state, self.InvSbox)
+        self.state_print("s_box", self.state)
         self.curr_round -= 1
+        self.key_print("k_sch", self.expanded_key)
         self.state = self.add_round_key(self.state)
-
+        self.state_print("output", self.state)
         return self.state
 
     def state_print(self, inpt, matrix):
